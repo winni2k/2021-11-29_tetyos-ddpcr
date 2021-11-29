@@ -1,0 +1,42 @@
+---
+title: "ddPCR modeling"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r}
+library(tidyverse)
+library(rethinking)
+library(cmdstanr)
+library(posterior)
+library(bayesplot)
+library(broom)
+color_scheme_set("brightblue")
+
+```
+
+```{r}
+d = list(
+  N = 10000,
+  drops_wt = rep(1, 10000),
+  drops_mut=c(rep(0, 9999),1)
+)
+mod = cmdstan_model('m1.stan')
+mod$print()
+
+fit <- mod$sample(
+  data = d, 
+  seed = 123, 
+  chains = 4, 
+  parallel_chains = 4,
+  refresh = 500
+)
+```
+```{r}
+stanfit <- rstan::read_stan_csv(fit$output_files())
+precis(stanfit)
+precis(stanfit)[3,3:4] %>% exp
+```
+
+
