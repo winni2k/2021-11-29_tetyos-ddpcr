@@ -12,8 +12,8 @@
 // The input data is a vector 'y' of length 'N'.
 data {
   int<lower=0> N;
-  array[N] int<lower=0, upper=1> drops_wt;
-  array[N] int<lower=0, upper=1> drops_mut;
+  int<lower=0> n_wt;
+  int<lower=0> n_mut;
 }
 
 // The parameters accepted by the model. Our model
@@ -23,19 +23,16 @@ parameters {
   real<lower=0> lambda_mut;
 }
 
-transformed parameters {
-  
-}
-// The model to be estimated. We model the output
-// 'y' to be normally distributed with mean 'mu'
-// and standard deviation 'sigma'.
 model {
   lambda_wt ~ exponential(1);
   lambda_mut ~ exponential(1);
-  for (n in 1:N) {
-    drops_wt[n] ~ poisson(lambda_wt) T[, 1];
-    drops_mut[n] ~ poisson(lambda_mut) T[, 1];
-  }
+
+  // All wt observations are censored Poisson counts
+  target += (N - n_wt) * poisson_lpmf(0 | lambda_wt);
+  // poisson_lccdf does _not_ include 0
+  target += n_wt * poisson_lccdf(0 | lambda_wt);
+  target += (N - n_mut) * poisson_lpmf(0 | lambda_mut);
+  target += n_mut * poisson_lccdf(0 | lambda_mut);
 }
 
 generated quantities {

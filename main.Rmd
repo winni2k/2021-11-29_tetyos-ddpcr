@@ -17,10 +17,17 @@ color_scheme_set("brightblue")
 ```
 
 ```{r}
+set.seed(42)
+d_sim = tibble(
+  wt_reads = rpois(1e4, 1.5),
+  mut_reads = rpois(1e4, 0.1)) %>% 
+  mutate(positive_wt = wt_reads > 0, positive_mut = mut_reads > 0)
+summary(d_sim)
+
 d = list(
   N = 10000,
-  drops_wt = rep(1, 10000),
-  drops_mut=c(rep(0, 9999),1)
+  n_wt = d_sim$positive_wt %>% sum,
+  n_mut = d_sim$positive_mut %>% sum
 )
 mod = cmdstan_model('m1.stan')
 mod$print()
@@ -37,6 +44,7 @@ fit <- mod$sample(
 stanfit <- rstan::read_stan_csv(fit$output_files())
 precis(stanfit)
 precis(stanfit)[3,3:4] %>% exp
+0.1/1.5
 ```
 
 

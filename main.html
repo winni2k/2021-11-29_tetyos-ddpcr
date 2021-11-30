@@ -230,10 +230,23 @@ pre code {
 ##     rhat</code></pre>
 <pre class="r"><code>library(broom)
 color_scheme_set(&quot;brightblue&quot;)</code></pre>
+<pre class="r"><code>set.seed(42)
+d_sim = tibble(
+  wt_reads = rpois(1e4, 1.5),
+  mut_reads = rpois(1e4, 0.1)) %&gt;% 
+  mutate(positive_wt = wt_reads &gt; 0, positive_mut = mut_reads &gt; 0)
+summary(d_sim)</code></pre>
+<pre><code>##     wt_reads       mut_reads      positive_wt     positive_mut   
+##  Min.   :0.000   Min.   :0.0000   Mode :logical   Mode :logical  
+##  1st Qu.:1.000   1st Qu.:0.0000   FALSE:2319      FALSE:9086     
+##  Median :1.000   Median :0.0000   TRUE :7681      TRUE :914      
+##  Mean   :1.496   Mean   :0.0969                                  
+##  3rd Qu.:2.000   3rd Qu.:0.0000                                  
+##  Max.   :8.000   Max.   :3.0000</code></pre>
 <pre class="r"><code>d = list(
   N = 10000,
-  drops_wt = rep(1, 10000),
-  drops_mut=c(rep(0, 9999),1)
+  n_wt = d_sim$positive_wt %&gt;% sum,
+  n_mut = d_sim$positive_mut %&gt;% sum
 )
 mod = cmdstan_model(&#39;m1.stan&#39;)
 mod$print()</code></pre>
@@ -251,8 +264,8 @@ mod$print()</code></pre>
 ## // The input data is a vector &#39;y&#39; of length &#39;N&#39;.
 ## data {
 ##   int&lt;lower=0&gt; N;
-##   array[N] int&lt;lower=0, upper=1&gt; drops_wt;
-##   array[N] int&lt;lower=0, upper=1&gt; drops_mut;
+##   int&lt;lower=0&gt; n_wt;
+##   int&lt;lower=0&gt; n_mut;
 ## }
 ## 
 ## // The parameters accepted by the model. Our model
@@ -262,19 +275,16 @@ mod$print()</code></pre>
 ##   real&lt;lower=0&gt; lambda_mut;
 ## }
 ## 
-## transformed parameters {
-##   
-## }
-## // The model to be estimated. We model the output
-## // &#39;y&#39; to be normally distributed with mean &#39;mu&#39;
-## // and standard deviation &#39;sigma&#39;.
 ## model {
 ##   lambda_wt ~ exponential(1);
 ##   lambda_mut ~ exponential(1);
-##   for (n in 1:N) {
-##     drops_wt[n] ~ poisson(lambda_wt) T[, 1];
-##     drops_mut[n] ~ poisson(lambda_mut) T[, 1];
-##   }
+## 
+##   // All wt observations are censored Poisson counts
+##   target += (N - n_wt) * poisson_lpmf(0 | lambda_wt);
+##   // poisson_lccdf does _not_ include 0
+##   target += n_wt * poisson_lccdf(0 | lambda_wt);
+##   target += (N - n_mut) * poisson_lpmf(0 | lambda_mut);
+##   target += n_mut * poisson_lccdf(0 | lambda_mut);
 ## }
 ## 
 ## generated quantities {
@@ -289,51 +299,53 @@ mod$print()</code></pre>
 )</code></pre>
 <pre><code>## Running MCMC with 4 parallel chains...
 ## 
-## Chain 2 Iteration:    1 / 2000 [  0%]  (Warmup) 
-## Chain 3 Iteration:    1 / 2000 [  0%]  (Warmup) 
-## Chain 4 Iteration:    1 / 2000 [  0%]  (Warmup) 
 ## Chain 1 Iteration:    1 / 2000 [  0%]  (Warmup) 
-## Chain 3 Iteration:  500 / 2000 [ 25%]  (Warmup) 
-## Chain 4 Iteration:  500 / 2000 [ 25%]  (Warmup) 
-## Chain 2 Iteration:  500 / 2000 [ 25%]  (Warmup) 
 ## Chain 1 Iteration:  500 / 2000 [ 25%]  (Warmup) 
-## Chain 3 Iteration: 1000 / 2000 [ 50%]  (Warmup) 
-## Chain 3 Iteration: 1001 / 2000 [ 50%]  (Sampling) 
-## Chain 4 Iteration: 1000 / 2000 [ 50%]  (Warmup) 
-## Chain 4 Iteration: 1001 / 2000 [ 50%]  (Sampling) 
-## Chain 2 Iteration: 1000 / 2000 [ 50%]  (Warmup) 
-## Chain 2 Iteration: 1001 / 2000 [ 50%]  (Sampling) 
 ## Chain 1 Iteration: 1000 / 2000 [ 50%]  (Warmup) 
 ## Chain 1 Iteration: 1001 / 2000 [ 50%]  (Sampling) 
-## Chain 2 Iteration: 1500 / 2000 [ 75%]  (Sampling) 
-## Chain 4 Iteration: 1500 / 2000 [ 75%]  (Sampling) 
 ## Chain 1 Iteration: 1500 / 2000 [ 75%]  (Sampling) 
-## Chain 3 Iteration: 1500 / 2000 [ 75%]  (Sampling) 
-## Chain 2 Iteration: 2000 / 2000 [100%]  (Sampling) 
-## Chain 2 finished in 116.0 seconds.
-## Chain 4 Iteration: 2000 / 2000 [100%]  (Sampling) 
-## Chain 4 finished in 117.7 seconds.
 ## Chain 1 Iteration: 2000 / 2000 [100%]  (Sampling) 
-## Chain 1 finished in 119.7 seconds.
+## Chain 2 Iteration:    1 / 2000 [  0%]  (Warmup) 
+## Chain 2 Iteration:  500 / 2000 [ 25%]  (Warmup) 
+## Chain 2 Iteration: 1000 / 2000 [ 50%]  (Warmup) 
+## Chain 2 Iteration: 1001 / 2000 [ 50%]  (Sampling) 
+## Chain 2 Iteration: 1500 / 2000 [ 75%]  (Sampling) 
+## Chain 2 Iteration: 2000 / 2000 [100%]  (Sampling) 
+## Chain 3 Iteration:    1 / 2000 [  0%]  (Warmup) 
+## Chain 3 Iteration:  500 / 2000 [ 25%]  (Warmup) 
+## Chain 3 Iteration: 1000 / 2000 [ 50%]  (Warmup) 
+## Chain 3 Iteration: 1001 / 2000 [ 50%]  (Sampling) 
+## Chain 3 Iteration: 1500 / 2000 [ 75%]  (Sampling) 
 ## Chain 3 Iteration: 2000 / 2000 [100%]  (Sampling) 
-## Chain 3 finished in 123.8 seconds.
+## Chain 4 Iteration:    1 / 2000 [  0%]  (Warmup) 
+## Chain 4 Iteration:  500 / 2000 [ 25%]  (Warmup) 
+## Chain 4 Iteration: 1000 / 2000 [ 50%]  (Warmup) 
+## Chain 4 Iteration: 1001 / 2000 [ 50%]  (Sampling) 
+## Chain 4 Iteration: 1500 / 2000 [ 75%]  (Sampling) 
+## Chain 4 Iteration: 2000 / 2000 [100%]  (Sampling) 
+## Chain 1 finished in 0.0 seconds.
+## Chain 2 finished in 0.0 seconds.
+## Chain 3 finished in 0.0 seconds.
+## Chain 4 finished in 0.0 seconds.
 ## 
 ## All 4 chains finished successfully.
-## Mean chain execution time: 119.3 seconds.
-## Total execution time: 124.3 seconds.</code></pre>
+## Mean chain execution time: 0.0 seconds.
+## Total execution time: 0.4 seconds.</code></pre>
 <pre class="r"><code>stanfit &lt;- rstan::read_stan_csv(fit$output_files())
 precis(stanfit)</code></pre>
 <div data-pagedtable="false">
 <script data-pagedtable-source type="application/json">
-{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["mean"],"name":[1],"type":["dbl"],"align":["right"]},{"label":["sd"],"name":[2],"type":["dbl"],"align":["right"]},{"label":["5.5%"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["94.5%"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["n_eff"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["Rhat4"],"name":[6],"type":["dbl"],"align":["right"]}],"data":[{"1":"1.001711e+02","2":"7.2238103375","3":"8.891756e+01","4":"1.121241e+02","5":"2311.126","6":"1.000001","_rn_":"lambda_wt"},{"1":"1.998666e-04","2":"0.0001432378","3":"3.656313e-05","4":"4.697628e-04","5":"3611.578","6":"1.000065","_rn_":"lambda_mut"},{"1":"-1.340174e+01","2":"0.8220991176","3":"-1.480651e+01","4":"-1.225408e+01","5":"2530.823","6":"1.000263","_rn_":"log_R"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["mean"],"name":[1],"type":["dbl"],"align":["right"]},{"label":["sd"],"name":[2],"type":["dbl"],"align":["right"]},{"label":["5.5%"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["94.5%"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["n_eff"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["Rhat4"],"name":[6],"type":["dbl"],"align":["right"]}],"data":[{"1":"1.4611544","2":"0.018366809","3":"1.43191890","4":"1.4906911","5":"3677.553","6":"0.9996595","_rn_":"lambda_wt"},{"1":"0.0959093","2":"0.003225186","3":"0.09080544","4":"0.1011635","5":"4059.413","6":"1.0003780","_rn_":"lambda_mut"},{"1":"-2.7240654","2":"0.036025615","3":"-2.78312055","4":"-2.6664900","5":"4002.971","6":"1.0007299","_rn_":"log_R"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
   </script>
 </div>
 <pre class="r"><code>precis(stanfit)[3,3:4] %&gt;% exp</code></pre>
 <div data-pagedtable="false">
 <script data-pagedtable-source type="application/json">
-{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["5.5%"],"name":[1],"type":["dbl"],"align":["right"]},{"label":["94.5%"],"name":[2],"type":["dbl"],"align":["right"]}],"data":[{"1":"3.712072e-07","2":"4.765643e-06","_rn_":"log_R"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["5.5%"],"name":[1],"type":["dbl"],"align":["right"]},{"label":["94.5%"],"name":[2],"type":["dbl"],"align":["right"]}],"data":[{"1":"0.06184521","2":"0.06949573","_rn_":"log_R"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
   </script>
 </div>
+<pre class="r"><code>0.1/1.5</code></pre>
+<pre><code>## [1] 0.06666667</code></pre>
 
 
 
