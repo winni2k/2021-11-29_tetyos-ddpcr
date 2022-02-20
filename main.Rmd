@@ -48,3 +48,44 @@ precis(stanfit)[3,3:4] %>% exp
 ```
 
 
+```{r}
+n_cells = 2000
+n_droplets = 1e4
+n_mutated = 50
+reads_per_cell = .001 # number of reads per cell
+vaf = 50/(2*n_cells)
+vaf
+d_sim = tibble(
+  lambda_wt = (2* (n_cells - n_mutated) + n_mutated) * extraction_efficiency,
+  lambda_mut = n_mutated * extraction_efficiency,
+  wt_reads = rpois(n_droplets, lambda_wt),
+  mut_reads = rpois(n_droplets, lambda_mut)
+) %>% 
+  mutate(positive_wt = wt_reads > 0, positive_mut = mut_reads > 0)
+summary(d_sim)
+
+
+
+d2 = list(
+  N = n_droplets,
+  n_wt = d_sim$positive_wt %>% sum,
+  n_mut = d_sim$positive_mut %>% sum,
+  kappa = n_cells
+)
+d2
+mod = cmdstan_model('m2.stan')
+mod$print()
+fit <- mod$sample(
+  data = d2, 
+  seed = 123, 
+  chains = 4, 
+  refresh = 500
+)
+
+stanfit <- rstan::read_stan_csv(fit$output_files())
+plot(precis(stanfit))
+fit$draws(variables=c("log_R"), format = "draws_df") %>% as_tibble %>% 
+    mutate(R=exp(log_R)) %>% 
+    select(R) %>% 
+    summary
+```
